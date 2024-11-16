@@ -1,146 +1,115 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 
 class PlayfairCipher
 {
-    private static string CreatePlayfairSquare(string key)
+    // Статическая таблица для шифрования
+    private static char[,] table = new char[5, 5];
+
+    // Словарь для быстрого поиска позиции буквы в таблице
+    private static Dictionary<char, (int, int)> positionDict = new Dictionary<char, (int, int)>();
+
+    // Метод для генерации таблицы 5x5 из ключа
+    private static void GenerateTable(string key)
     {
-        string alphabet = "АБВГДЕЖЗИКЛМНОПРСТУФХЦЧШЩЫЭЮЯ";  
-        StringBuilder square = new StringBuilder();
-        key = key.ToUpper().Replace("Ё", "Е");  
+        // Убираем все символы, кроме букв, и переводим в верхний регистр
+        key = new string(key.Where(c => char.IsLetter(c)).Select(c => char.ToUpper(c)).ToArray());
 
-        //  повторяющиеся символы
-        foreach (char c in key)
+        // Объединяем ключ и алфавит (I и J считаем одинаковыми)
+        string alphabet = "ABCDEFGHIKLMNOPQRSTUVWXYZ";  // Без J
+        string combinedKey = key + alphabet;
+
+        // Убираем повторяющиеся символы
+        combinedKey = string.Join("", combinedKey.Distinct());
+
+        int index = 0;
+        for (int i = 0; i < 5; i++)
         {
-            if (!square.ToString().Contains(c.ToString()) && alphabet.Contains(c))
-                square.Append(c);
-        }
-
-        foreach (char c in alphabet)
-        {
-            if (!square.ToString().Contains(c.ToString()))
-                square.Append(c);
-        }
-
-        return square.ToString();
-    }
-
-    private static string PrepareText(string text)
-    {
-        text = text.ToUpper().Replace("Ё", "Е");  
-        StringBuilder preparedText = new StringBuilder();
-
-        foreach (char c in text)
-        {
-            if (char.IsLetter(c) || ",.?!".Contains(c))
+            for (int j = 0; j < 5; j++)
             {
-                preparedText.Append(c);
+                table[i, j] = combinedKey[index];
+                positionDict[table[i, j]] = (i, j);
+                index++;
             }
         }
+    }
 
-        for (int i = 0; i < preparedText.Length; i++)
+    // Метод для разделения текста на пары букв
+    private static List<string> PrepareText(string text)
+    {
+        // Убираем все символы, кроме букв
+        text = new string(text.Where(c => char.IsLetter(c)).Select(c => char.ToUpper(c)).ToArray());
+
+        // Заменяем J на I
+        text = text.Replace('J', 'I');
+
+        // Разделяем на пары
+        List<string> pairs = new List<string>();
+        for (int i = 0; i < text.Length; i += 2)
         {
-
-            if (i + 1 < preparedText.Length && preparedText[i] == preparedText[i + 1])
+            if (i + 1 < text.Length)
             {
-                preparedText.Insert(i + 1, 'Ь'); 
-                i++;
+                if (text[i] == text[i + 1]) // Если одинаковые буквы
+                {
+                    pairs.Add(text[i] + "X"); // Добавляем X как разделитель
+                    i--;
+                }
+                else
+                {
+                    pairs.Add(text.Substring(i, 2));
+                }
+            }
+            else
+            {
+                pairs.Add(text[i] + "X"); // Если нечётное количество букв, добавляем X в конец
             }
         }
-
-
-        if (preparedText.Length % 2 != 0)
-        {
-            preparedText.Append('Ь');
-        }
-
-        return preparedText.ToString();
+        return pairs;
     }
 
-    private static string EncryptPair(char a, char b, string square)
+    // Метод для шифрования пары букв
+    private static string EncryptPair(string pair)
     {
-        int rowA = square.IndexOf(a) / 5;
-        int colA = square.IndexOf(a) % 5;
-        int rowB = square.IndexOf(b) / 5;
-        int colB = square.IndexOf(b) % 5;
+        var (x1, y1) = positionDict[pair[0]];
+        var (x2, y2) = positionDict[pair[1]];
 
-
-        if (rowA == rowB)
+        if (x1 == x2) // Буквы в одной строке
         {
-            colA = (colA + 1) % 5;
-            colB = (colB + 1) % 5;
+            y1 = (y1 + 1) % 5;
+            y2 = (y2 + 1) % 5;
         }
-        else if (colA == colB) 
+        else if (y1 == y2) // Буквы в одном столбце
         {
-            rowA = (rowA + 1) % 7;
-            rowB = (rowB + 1) % 7;
+            x1 = (x1 + 1) % 5;
+            x2 = (x2 + 1) % 5;
         }
-        else
+        else // Буквы в разных строках и столбцах
         {
-            int temp = colA;
-            colA = colB;
-            colB = temp;
+            (y1, y2) = (y2, y1); // Меняем столбцы
         }
 
-        return square[rowA * 5 + colA].ToString() + square[rowB * 5 + colB].ToString();
+        return $"{table[x1, y1]}{table[x2, y2]}";
     }
 
-    public static string Encrypt(string plaintext, string key)
+    // Метод для шифрования текста
+    public static string Encrypt(string text, string key)
     {
-        string square = CreatePlayfairSquare(key);
-        string preparedText = PrepareText(plaintext);
-        StringBuilder ciphertext = new StringBuilder();
-
-        // Проходим по парам символов и шифруем их
-        for (int i = 0; i < preparedText.Length; i += 2)
-        {
-            char a = preparedText[i];
-            char b = preparedText[i + 1];
-            ciphertext.Append(EncryptPair(a, b, square));
-        }
-
-        return ciphertext.ToString();
+        GenerateTable(key); // Генерация таблицы на основе ключа
+        var pairs = PrepareText(text); // Разбиение текста на пары
+        var encryptedText = string.Join("", pairs.Select(pair => EncryptPair(pair))); // Шифрование каждой пары
+        return encryptedText;
     }
 
-    public static string RestorePunctuation(string originalText, string encryptedText)
+    static void Main(string[] args)
     {
-        StringBuilder result = new StringBuilder();
-        int encIndex = 0;
+        string key = "Khan"; // Ваш ключ
+        string text = "I am Khan Ameer, and i'm autistic";  // Ваше сообщение
 
-        for (int i = 0; i < originalText.Length; i++)
-        {
-            char c = originalText[i];
-
-            if (char.IsLetter(c)) 
-            {
-                result.Append(encryptedText[encIndex]);
-                encIndex++;
-            }
-            else if (",.?!".Contains(c))  
-            {
-                result.Append(c);
-            }
-        }
-
-        return result.ToString();
-    }
-
-    public static void Main()
-    {
-        Console.Write("Введите ключ: ");
-        string key = Console.ReadLine();
-
-        Console.Write("Введите текст для шифрования (с запятыми, точками и пробелами): ");
-        string plaintext = Console.ReadLine();
-
-        string ciphertext = Encrypt(plaintext, key);
-        string resultText = RestorePunctuation(plaintext, ciphertext);
-
-        Console.WriteLine($"Зашифрованный текст: {resultText}");
-    
-    
-    
+        string encryptedText = Encrypt(text, key);
+        Console.WriteLine("Зашифрованный текст: " + encryptedText);
+        if (encryptedText == "MKIAANBNSMDSNBCLSEQUMQQOEV")
+            Console.WriteLine("true");
         Console.ReadKey();
     }
 }
